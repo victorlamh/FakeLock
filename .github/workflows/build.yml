@@ -1,0 +1,45 @@
+name: Build FakeLock
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build IPA
+        run: |
+          xcodebuild \
+            -project FakeLock.xcodeproj \
+            -scheme FakeLock \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            clean build
+
+      - name: Package IPA
+        run: |
+          mkdir -p output/Payload
+          cp -r build/Build/Products/Release-iphoneos/FakeLock.app output/Payload/
+          cd output && zip -r ../FakeLock.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FakeLock.ipa
+          path: FakeLock.ipa

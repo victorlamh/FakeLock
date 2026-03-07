@@ -1,0 +1,32 @@
+name: FakeLock
+options:
+  bundleIdPrefix: com.yourname
+  deploymentTarget:
+    iOS: "16.0"
+
+targets:
+  FakeLock:
+    type: application
+    platform: iOS
+    sources:
+      - FakeLock
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourname.fakelock
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: 1
+        MARKETING_VERSION: 1.0
+        CURRENT_PROJECT_VERSION: 1
+    dependencies:
+      - sdk: AVFoundation.framework
+      - sdk: MediaPlayer.framework
+      - sdk: Photos.framework
+      - sdk: Contacts.framework
+    info:
+      path: FakeLock/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: "Used to set your lock screen wallpaper."
+        NSCameraUsageDescription: "Not used."
