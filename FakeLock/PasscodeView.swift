@@ -15,21 +15,18 @@ struct PasscodeView: View {
         GeometryReader { geo in
             ZStack {
 
-                // ── BACKGROUND ────────────────────────────────────
                 backgroundLayer
 
-                // ── MAIN CONTENT ──────────────────────────────────
                 VStack(spacing: 0) {
-
-                    Spacer().frame(height: geo.size.height * 0.13)
+                    Spacer().frame(height: geo.safeAreaInsets.top + 52)
 
                     headerSection
 
-                    Spacer().frame(height: geo.size.height * 0.07)
+                    Spacer().frame(height: 36)
 
                     dotsRow
 
-                    Spacer().frame(height: geo.size.height * 0.07)
+                    Spacer().frame(height: 46)
 
                     numericGrid
 
@@ -42,7 +39,7 @@ struct PasscodeView: View {
                     Spacer()
                 }
 
-                // ── EMERGENCY + DELETE pinned to very bottom ───────
+                // Emergency + Delete pinned to bottom
                 VStack {
                     Spacer()
                     HStack {
@@ -50,9 +47,7 @@ struct PasscodeView: View {
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.85))
                             .frame(width: 82, height: 44)
-
                         Spacer()
-
                         Button(action: deleteAction) {
                             Image(systemName: enteredDigits.isEmpty ? "xmark" : "delete.left")
                                 .font(.system(size: 22, weight: .light))
@@ -77,22 +72,14 @@ struct PasscodeView: View {
     var backgroundLayer: some View {
         ZStack {
             if let img = engine.wallpaperImage {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .ignoresSafeArea()
+                Image(uiImage: img).resizable().scaledToFill().ignoresSafeArea()
             } else {
                 LinearGradient(
                     colors: [Color(hex: "0a0e27"), Color(hex: "1a1060"), Color(hex: "0d0d1a")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ).ignoresSafeArea()
             }
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.55)
-                .ignoresSafeArea()
+            Rectangle().fill(.ultraThinMaterial).opacity(0.55).ignoresSafeArea()
             Color.black.opacity(0.15).ignoresSafeArea()
         }
     }
@@ -143,22 +130,19 @@ struct PasscodeView: View {
     func numericRow(_ digits: [Int]) -> some View {
         HStack(spacing: 16) {
             ForEach(digits, id: \.self) { d in
-                KeyButton(digit: d, isHighlighted: highlightedKey == d) {
-                    handleDigit(d)
-                }
+                KeyButton(digit: d, isHighlighted: highlightedKey == d) { handleDigit(d) }
             }
         }
     }
 
     var swipeDownGesture: some Gesture {
-        DragGesture(minimumDistance: 20)
-            .onEnded { value in
-                if value.translation.height > 80 {
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-                        engine.lockState = .locked
-                    }
+        DragGesture(minimumDistance: 20).onEnded { value in
+            if value.translation.height > 80 {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                    engine.lockState = .locked
                 }
             }
+        }
     }
 
     // MARK: - Logic
@@ -175,9 +159,7 @@ struct PasscodeView: View {
 
     func handleDigit(_ digit: Int) {
         guard enteredDigits.count < 4 else { return }
-        withAnimation(.easeInOut(duration: 0.08)) {
-            enteredDigits.append(digit)
-        }
+        withAnimation(.easeInOut(duration: 0.08)) { enteredDigits.append(digit) }
         if enteredDigits.count == 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { checkCode() }
         }
@@ -186,9 +168,7 @@ struct PasscodeView: View {
     func checkCode() {
         if enteredDigits == engine.passcodeDigits {
             engine.performUnlock()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                enteredDigits = []
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { enteredDigits = [] }
         } else {
             shakeOffset = 18
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { shakeOffset = -18 }
@@ -241,9 +221,7 @@ struct KeyButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isHighlighted
-                          ? Color.white.opacity(0.9)
-                          : Color.white.opacity(0.18))
+                    .fill(isHighlighted ? Color.white.opacity(0.9) : Color.white.opacity(0.18))
                     .frame(width: 82, height: 82)
                     .scaleEffect(isHighlighted ? 0.93 : 1.0)
                     .animation(.easeInOut(duration: 0.1), value: isHighlighted)
@@ -254,9 +232,7 @@ struct KeyButton: View {
                     if let letter = letters[digit] {
                         Text(letter)
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(isHighlighted
-                                             ? .black.opacity(0.6)
-                                             : .white.opacity(0.6))
+                            .foregroundColor(isHighlighted ? .black.opacity(0.6) : .white.opacity(0.6))
                             .kerning(1.8)
                     }
                 }

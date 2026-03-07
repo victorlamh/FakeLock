@@ -4,8 +4,8 @@ import PhotosUI
 struct ConfigView: View {
     @EnvironmentObject var engine: LockEngine
     @Environment(\.dismiss) var dismiss
-    @State private var selectedWallpaper: PhotosPickerItem?   = nil
-    @State private var selectedHomeScreen: PhotosPickerItem?  = nil
+    @State private var selectedWallpaper: PhotosPickerItem?  = nil
+    @State private var selectedHomeScreen: PhotosPickerItem? = nil
 
     var body: some View {
         NavigationStack {
@@ -90,7 +90,7 @@ struct ConfigView: View {
                     }
                     .padding(.vertical, 4)
                 } header: { Text("Auto-Type Timing") } footer: {
-                    Text("Volume down → waits delay → types each digit → unlocks.")
+                    Text("Volume down → waits delay → types each digit → shows home screen.")
                 }
 
                 // ── WALLPAPER ─────────────────────────────────────
@@ -101,7 +101,7 @@ struct ConfigView: View {
                     .onChange(of: selectedWallpaper) { item in
                         Task {
                             guard let item else { return }
-                            if let data = try? await item.loadTransferable(type: Data.self),
+                            if let data  = try? await item.loadTransferable(type: Data.self),
                                let image = UIImage(data: data) {
                                 await MainActor.run { engine.saveWallpaper(image) }
                             }
@@ -109,20 +109,20 @@ struct ConfigView: View {
                     }
                     if engine.wallpaperImage != nil {
                         HStack {
-                            Text("Wallpaper set ✓")
-                                .foregroundColor(.secondary)
+                            Text("Wallpaper set ✓").foregroundColor(.secondary)
                             Spacer()
                             Button("Remove") {
                                 engine.wallpaperImage = nil
                                 try? FileManager.default.removeItem(at:
-                                    FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                    FileManager.default
+                                        .urls(for: .documentDirectory, in: .userDomainMask)[0]
                                         .appendingPathComponent("wallpaper.jpg"))
                             }
                             .foregroundColor(.red)
                         }
                     }
                 } header: { Text("Lock Screen Wallpaper") } footer: {
-                    Text("Take a screenshot of your real lock screen for maximum realism.")
+                    Text("Screenshot your real lock screen and use it here for maximum realism.")
                 }
 
                 // ── HOME SCREEN ───────────────────────────────────
@@ -133,7 +133,7 @@ struct ConfigView: View {
                     .onChange(of: selectedHomeScreen) { item in
                         Task {
                             guard let item else { return }
-                            if let data = try? await item.loadTransferable(type: Data.self),
+                            if let data  = try? await item.loadTransferable(type: Data.self),
                                let image = UIImage(data: data) {
                                 await MainActor.run { engine.saveHomeScreen(image) }
                             }
@@ -141,20 +141,20 @@ struct ConfigView: View {
                     }
                     if engine.homeScreenImage != nil {
                         HStack {
-                            Text("Home screen set ✓")
-                                .foregroundColor(.secondary)
+                            Text("Home screen set ✓").foregroundColor(.secondary)
                             Spacer()
                             Button("Remove") {
                                 engine.homeScreenImage = nil
                                 try? FileManager.default.removeItem(at:
-                                    FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                    FileManager.default
+                                        .urls(for: .documentDirectory, in: .userDomainMask)[0]
                                         .appendingPathComponent("homescreen.jpg"))
                             }
                             .foregroundColor(.red)
                         }
                     }
                 } header: { Text("Home Screen") } footer: {
-                    Text("Shown during unlock animation. Take a screenshot of your real home screen.")
+                    Text("Shown instantly on unlock. Screenshot your real home screen.")
                 }
 
                 // ── NOTIFICATIONS ─────────────────────────────────
@@ -164,9 +164,10 @@ struct ConfigView: View {
                     }
                     .onDelete { engine.fakeNotifications.remove(atOffsets: $0); engine.save() }
                     .onMove   { engine.fakeNotifications.move(fromOffsets: $0, toOffset: $1); engine.save() }
-                    Button(action: {
-                        engine.fakeNotifications.append(FakeNotification()); engine.save()
-                    }) {
+                    Button {
+                        engine.fakeNotifications.append(FakeNotification())
+                        engine.save()
+                    } label: {
                         Label("Add Notification", systemImage: "plus.circle.fill")
                     }
                 } header: { Text("Fake Notifications") } footer: {
@@ -214,9 +215,11 @@ struct NotificationRowView: View {
                 .font(.system(size: 15))
                 .onChange(of: notif.body) { _ in engine.save() }
             Divider()
-            Stepper("Shown \(notif.minutesAgo == 0 ? "now" : "\(notif.minutesAgo)m ago")",
-                    value: $notif.minutesAgo, in: 0...60)
-                .onChange(of: notif.minutesAgo) { _ in engine.save() }
+            Stepper(
+                "Shown \(notif.minutesAgo == 0 ? "now" : "\(notif.minutesAgo)m ago")",
+                value: $notif.minutesAgo, in: 0...60
+            )
+            .onChange(of: notif.minutesAgo) { _ in engine.save() }
         }
         .padding(.vertical, 6)
     }

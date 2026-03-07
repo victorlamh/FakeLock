@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 
-// Defers bottom-edge system gesture (swipe to close) — requires two deliberate swipes
 class LockHostingController: UIHostingController<AnyView> {
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .bottom }
@@ -9,12 +8,12 @@ class LockHostingController: UIHostingController<AnyView> {
 
 class SceneDelegate: NSObject, UIWindowSceneDelegate {
     var window: UIWindow?
+    var engine = LockEngine()
 
     func scene(_ scene: UIScene,
                willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let engine  = LockEngine()
         let content = LockScreenView()
             .environmentObject(engine)
             .preferredColorScheme(.dark)
@@ -23,6 +22,14 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
         window.rootViewController = host
         window.makeKeyAndVisible()
         self.window = window
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        if engine.showHomeScreen || engine.lockState == .unlocking {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.engine.resetToLocked()
+            }
+        }
     }
 }
 
@@ -41,7 +48,6 @@ struct FakeLockApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        // Window is managed by SceneDelegate — this is intentionally empty
         WindowGroup { EmptyView() }
     }
 }

@@ -28,10 +28,10 @@ struct CameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = context.coordinator
-        return picker
+        let p = UIImagePickerController()
+        p.sourceType = .camera
+        p.delegate = context.coordinator
+        return p
     }
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -85,7 +85,7 @@ struct LockScreenView: View {
                         ))
                 }
 
-                // ── HOME SCREEN SNAPSHOT — instant, no animation ──
+                // ── HOME SCREEN — instant, no transition ──────────
                 if engine.showHomeScreen {
                     homeScreenOverlay
                         .ignoresSafeArea()
@@ -112,14 +112,11 @@ struct LockScreenView: View {
     // MARK: - Wallpaper
     @ViewBuilder var wallpaperView: some View {
         if let img = engine.wallpaperImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
+            Image(uiImage: img).resizable().scaledToFill()
         } else {
             LinearGradient(
                 colors: [Color(hex: "0a0e27"), Color(hex: "1a1060"), Color(hex: "0d0d1a")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .topLeading, endPoint: .bottomTrailing
             )
         }
     }
@@ -127,9 +124,7 @@ struct LockScreenView: View {
     // MARK: - Home Screen Overlay
     @ViewBuilder var homeScreenOverlay: some View {
         if let img = engine.homeScreenImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
+            Image(uiImage: img).resizable().scaledToFill()
         } else {
             Color.black
         }
@@ -165,14 +160,13 @@ struct LockScreenView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, max(geo.safeAreaInsets.top, 14))
 
-                // Push time block to roughly 35% from top
-                Spacer().frame(height: geo.size.height * 0.10)
+                Spacer().frame(height: 48)
 
                 Image(systemName: "lock.fill")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.white.opacity(0.85))
 
-                Spacer().frame(height: 14)
+                Spacer().frame(height: 12)
 
                 Text(engine.forceTime ? engine.forcedTimeString : currentTime)
                     .font(.system(size: 82, weight: .thin))
@@ -186,9 +180,8 @@ struct LockScreenView: View {
                     .foregroundColor(.white.opacity(0.85))
                     .padding(.top, 4)
 
-                Spacer().frame(height: 36)
+                Spacer().frame(height: 32)
 
-                // Notifications
                 if !engine.fakeNotifications.isEmpty {
                     VStack(spacing: 10) {
                         ForEach(engine.fakeNotifications.prefix(3)) { notif in
@@ -200,7 +193,6 @@ struct LockScreenView: View {
 
                 Spacer()
 
-                // Face ID hint
                 VStack(spacing: 8) {
                     Image(systemName: "faceid")
                         .font(.system(size: 28))
@@ -210,9 +202,8 @@ struct LockScreenView: View {
                         .foregroundColor(.white.opacity(0.6))
                 }
 
-                Spacer().frame(height: 22)
+                Spacer().frame(height: 20)
 
-                // Torch + Camera
                 HStack {
                     CornerButton(
                         icon: engine.torchOn ? "flashlight.on.fill" : "flashlight.off.fill"
@@ -228,9 +219,7 @@ struct LockScreenView: View {
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { value in
-                    if value.translation.height < 0 {
-                        dragOffset = value.translation.height
-                    }
+                    if value.translation.height < 0 { dragOffset = value.translation.height }
                 }
                 .onEnded { value in
                     let velocity = value.predictedEndTranslation.height
@@ -343,12 +332,8 @@ struct CornerButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: 52, height: 52)
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
+                Circle().fill(.ultraThinMaterial).frame(width: 52, height: 52)
+                Image(systemName: icon).font(.system(size: 20)).foregroundColor(.white)
             }
         }
     }

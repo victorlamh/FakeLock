@@ -30,12 +30,12 @@ class VolumeObserver: NSObject, ObservableObject {
         super.init()
         try? audioSession.setActive(true)
         audioSession.addObserver(self, forKeyPath: "outputVolume",
-                                  options: [.new, .old], context: nil)
+                                 options: [.new, .old], context: nil)
     }
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?,
-                                change: [NSKeyValueChangeKey: Any]?,
-                                context: UnsafeMutableRawPointer?) {
+                               change: [NSKeyValueChangeKey: Any]?,
+                               context: UnsafeMutableRawPointer?) {
         guard keyPath == "outputVolume" else { return }
         let newVol = (change?[.newKey] as? Float) ?? 0
         let oldVol = (change?[.oldKey] as? Float) ?? 0
@@ -57,7 +57,7 @@ class LockEngine: ObservableObject {
     @Published var lockState: LockState = .locked
     @Published var showHomeScreen: Bool = false
 
-    // Images — @Published so views react immediately
+    // Images
     @Published var wallpaperImage: UIImage? = nil
     @Published var homeScreenImage: UIImage? = nil
 
@@ -134,21 +134,15 @@ class LockEngine: ObservableObject {
 
     // MARK: - Unlock
     func performUnlock() {
-        lockState = .unlocking
-        // Show home screen snapshot instantly — NO animation, so the suspend is invisible
+        // Instantly cover with home screen — no animation, no suspend
         showHomeScreen = true
-        // Suspend immediately after one frame so the snapshot is already covering everything
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            UIView.setAnimationsEnabled(false)
-            UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                UIView.setAnimationsEnabled(true)
-                self.showHomeScreen = false
-                self.lockState = .locked
-            }
-        }
+        lockState = .unlocking
     }
 
+    func resetToLocked() {
+        showHomeScreen = false
+        lockState = .locked
+    }
 
     // MARK: - Wallpaper
     func saveWallpaper(_ image: UIImage) {
