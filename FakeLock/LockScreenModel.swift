@@ -46,13 +46,20 @@ class VolumeObserver: NSObject, ObservableObject {
         }
     }
 
-    deinit { audioSession.removeObserver(self, forKeyPath: "outputVolume") }
+    deinit {
+        audioSession.removeObserver(self, forKeyPath: "outputVolume")
+    }
 }
 
 // MARK: - Lock Engine
 class LockEngine: ObservableObject {
 
     @Published var lockState: LockState = .locked
+    @Published var showHomeScreen: Bool = false
+
+    // Images — @Published so views react immediately
+    @Published var wallpaperImage: UIImage? = nil
+    @Published var homeScreenImage: UIImage? = nil
 
     // Time
     @Published var forceTime: Bool = false
@@ -67,10 +74,10 @@ class LockEngine: ObservableObject {
     // Notifications
     @Published var fakeNotifications: [FakeNotification] = []
 
-    // Passcode — 4 digits
+    // Passcode
     @Published var passcodeDigits: [Int] = [1, 2, 3, 4]
-    @Published var autoTypeDelay: Double = 1.5   // delay after volume press before typing starts
-    @Published var digitInterval: Double = 0.5   // time between each digit
+    @Published var autoTypeDelay: Double = 1.5
+    @Published var digitInterval: Double = 0.5
 
     // Torch
     @Published var torchOn: Bool = false
@@ -78,24 +85,31 @@ class LockEngine: ObservableObject {
     init() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         load()
+        wallpaperImage  = loadWallpaper()
+        homeScreenImage = loadHomeScreen()
     }
 
-    // MARK: Time
+    // MARK: - Time
     var forcedTimeString: String {
         String(format: "%d:%02d", forcedHour, forcedMinute)
     }
 
     func liveTimeString() -> String {
-        let c = Calendar.current; let n = Date()
-        return String(format: "%d:%02d", c.component(.hour, from: n), c.component(.minute, from: n))
+        let c = Calendar.current
+        let n = Date()
+        return String(format: "%d:%02d",
+                      c.component(.hour, from: n),
+                      c.component(.minute, from: n))
     }
 
     func liveDateString() -> String {
-        let f = DateFormatter(); f.dateFormat = "EEEE d MMMM"; f.locale = Locale.current
+        let f = DateFormatter()
+        f.dateFormat = "EEEE d MMMM"
+        f.locale = Locale.current
         return f.string(from: Date()).capitalized
     }
 
-    // MARK: Battery
+    // MARK: - Battery
     var displayBattery: Int {
         if forceBattery { return forcedBattery }
         let l = UIDevice.current.batteryLevel
@@ -108,7 +122,7 @@ class LockEngine: ObservableObject {
         return s == .charging || s == .full
     }
 
-    // MARK: Torch
+    // MARK: - Torch
     func toggleTorch() {
         guard let device = AVCaptureDevice.default(for: .video),
               device.hasTorch else { return }
@@ -118,22 +132,26 @@ class LockEngine: ObservableObject {
         device.unlockForConfiguration()
     }
 
-    // MARK: Unlock → real home screen
+    // MARK: - Unlock
     func performUnlock() {
         lockState = .unlocking
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        withAnimation(.easeInOut(duration: 0.38)) {
+            showHomeScreen = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-            // Reset after returning to app
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.showHomeScreen = false
                 self.lockState = .locked
             }
         }
     }
 
-    // MARK: Wallpaper
+    // MARK: - Wallpaper
     func saveWallpaper(_ image: UIImage) {
         guard let data = image.jpegData(compressionQuality: 0.85) else { return }
         try? data.write(to: wallpaperURL())
+        DispatchQueue.main.async { self.wallpaperImage = image }
     }
 
     func loadWallpaper() -> UIImage? {
@@ -146,18 +164,35 @@ class LockEngine: ObservableObject {
             .appendingPathComponent("wallpaper.jpg")
     }
 
-    // MARK: Persist
+    // MARK: - Home Screen
+    func saveHomeScreen(_ image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+        try? data.write(to: homeScreenURL())
+        DispatchQueue.main.async { self.homeScreenImage = image }
+    }
+
+    func loadHomeScreen() -> UIImage? {
+        guard let data = try? Data(contentsOf: homeScreenURL()) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func homeScreenURL() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("homescreen.jpg")
+    }
+
+    // MARK: - Persist
     func save() {
         let d = UserDefaults.standard
-        d.set(forceTime,       forKey: "forceTime")
-        d.set(forcedHour,      forKey: "forcedHour")
-        d.set(forcedMinute,    forKey: "forcedMinute")
-        d.set(forceBattery,    forKey: "forceBattery")
-        d.set(forcedBattery,   forKey: "forcedBattery")
-        d.set(forcedCharging,  forKey: "forcedCharging")
-        d.set(autoTypeDelay,   forKey: "autoTypeDelay")
-        d.set(digitInterval,   forKey: "digitInterval")
-        d.set(passcodeDigits,  forKey: "passcodeDigits")
+        d.set(forceTime,      forKey: "forceTime")
+        d.set(forcedHour,     forKey: "forcedHour")
+        d.set(forcedMinute,   forKey: "forcedMinute")
+        d.set(forceBattery,   forKey: "forceBattery")
+        d.set(forcedBattery,  forKey: "forcedBattery")
+        d.set(forcedCharging, forKey: "forcedCharging")
+        d.set(autoTypeDelay,  forKey: "autoTypeDelay")
+        d.set(digitInterval,  forKey: "digitInterval")
+        d.set(passcodeDigits, forKey: "passcodeDigits")
         if let data = try? JSONEncoder().encode(fakeNotifications) {
             d.set(data, forKey: "fakeNotifications")
         }
@@ -166,15 +201,15 @@ class LockEngine: ObservableObject {
     func load() {
         let d = UserDefaults.standard
         forceTime      = d.bool(forKey: "forceTime")
-        forcedHour     = d.object(forKey: "forcedHour")   as? Int ?? 11
-        forcedMinute   = d.object(forKey: "forcedMinute") as? Int ?? 11
+        forcedHour     = d.object(forKey: "forcedHour")    as? Int ?? 11
+        forcedMinute   = d.object(forKey: "forcedMinute")  as? Int ?? 11
         forceBattery   = d.bool(forKey: "forceBattery")
         forcedBattery  = d.object(forKey: "forcedBattery") as? Int ?? 37
         forcedCharging = d.bool(forKey: "forcedCharging")
         autoTypeDelay  = d.object(forKey: "autoTypeDelay") as? Double ?? 1.5
         digitInterval  = d.object(forKey: "digitInterval") as? Double ?? 0.5
         passcodeDigits = d.array(forKey: "passcodeDigits") as? [Int] ?? [1, 2, 3, 4]
-        if let data = d.data(forKey: "fakeNotifications"),
+        if let data    = d.data(forKey: "fakeNotifications"),
            let decoded = try? JSONDecoder().decode([FakeNotification].self, from: data) {
             fakeNotifications = decoded
         }

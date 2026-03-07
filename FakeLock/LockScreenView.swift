@@ -1,5 +1,6 @@
 import SwiftUI
 import MediaPlayer
+import AVFoundation
 
 // MARK: - Hex Color
 extension Color {
@@ -22,7 +23,7 @@ func resetVolumeToMid() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { s.value = 0.5 }
 }
 
-// MARK: - Camera View
+// MARK: - Camera picker
 struct CameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
 
@@ -32,7 +33,6 @@ struct CameraView: UIViewControllerRepresentable {
         picker.delegate = context.coordinator
         return picker
     }
-
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -54,46 +54,50 @@ struct LockScreenView: View {
 
     @State private var currentTime: String = ""
     @State private var currentDate: String = ""
-    @State private var clockTimer: Timer? = nil
+    @State private var clockTimer: Timer?
     @State private var dragOffset: CGFloat = 0
-    @State private var isDragging: Bool = false
     @State private var tapCount = 0
-    @State private var tapTimer: Timer? = nil
+    @State private var tapTimer: Timer?
     @State private var showConfig = false
     @State private var showCamera = false
-    @State private var wallpaper: UIImage? = nil
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // ── WALLPAPER ────────────────────────────────────────
-                wallpaperView
-                    .ignoresSafeArea()
 
-                // ── LOCK CONTENT ─────────────────────────────────────
+                // ── WALLPAPER ─────────────────────────────────────
+                wallpaperView.ignoresSafeArea()
+
+                // ── LOCK CONTENT ──────────────────────────────────
                 if engine.lockState == .locked {
                     lockContent(geo: geo)
                         .offset(y: dragOffset < 0 ? dragOffset * 0.6 : 0)
                         .opacity(1.0 - Double(max(0, -dragOffset)) / 300)
-                        .transition(.identity)
                 }
 
-                // ── PASSCODE OVERLAY ─────────────────────────────────
+                // ── PASSCODE OVERLAY ──────────────────────────────
                 if engine.lockState == .passcode || engine.lockState == .unlocking {
-                    PasscodeView(wallpaper: wallpaper)
+                    PasscodeView()
                         .environmentObject(engine)
                         .transition(.asymmetric(
-                            insertion: .move(edge: .bottom),
-                            removal: .move(edge: .bottom)
+                            insertion: .opacity.combined(with: .offset(y: 30)),
+                            removal:   .opacity.combined(with: .offset(y: 30))
                         ))
+                }
+
+                // ── HOME SCREEN SNAPSHOT ──────────────────────────
+                if engine.showHomeScreen {
+                    homeScreenOverlay
+                        .transition(.opacity)
+                        .zIndex(99)
                 }
             }
             .animation(.spring(response: 0.42, dampingFraction: 0.88), value: engine.lockState)
+            .animation(.easeInOut(duration: 0.38), value: engine.showHomeScreen)
         }
         .ignoresSafeArea()
         .statusBarHidden(true)
         .onAppear {
-            wallpaper = engine.loadWallpaper()
             startClock()
             setupVolumeObserver()
         }
@@ -108,7 +112,7 @@ struct LockScreenView: View {
 
     // MARK: - Wallpaper
     @ViewBuilder var wallpaperView: some View {
-        if let img = wallpaper {
+        if let img = engine.wallpaperImage {
             Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
@@ -121,10 +125,22 @@ struct LockScreenView: View {
         }
     }
 
+    // MARK: - Home Screen Overlay
+    @ViewBuilder var homeScreenOverlay: some View {
+        if let img = engine.homeScreenImage {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+        } else {
+            Color.black.ignoresSafeArea()
+        }
+    }
+
     // MARK: - Lock Content
     func lockContent(geo: GeometryProxy) -> some View {
         ZStack {
-            if wallpaper != nil {
+            if engine.wallpaperImage != nil {
                 Color.black.opacity(0.2).ignoresSafeArea()
             }
 
@@ -148,9 +164,9 @@ struct LockScreenView: View {
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
-                .padding(.top, geo.safeAreaInsets.top > 0 ? geo.safeAreaInsets.top : 14)
+                .padding(.top, max(geo.safeAreaInsets.top, 14))
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 38)
 
                 // Lock icon
                 Image(systemName: "lock.fill")
@@ -163,6 +179,8 @@ struct LockScreenView: View {
                 Text(engine.forceTime ? engine.forcedTimeString : currentTime)
                     .font(.system(size: 82, weight: .thin))
                     .foregroundColor(.white)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
                     .onTapGesture { handleTripleTap() }
 
                 // Date
@@ -185,7 +203,7 @@ struct LockScreenView: View {
 
                 Spacer()
 
-                // Face ID + swipe hint
+                // Face ID hint
                 VStack(spacing: 8) {
                     Image(systemName: "faceid")
                         .font(.system(size: 28))
@@ -197,7 +215,7 @@ struct LockScreenView: View {
 
                 Spacer().frame(height: 22)
 
-                // Bottom corners: real torch + real camera
+                // Torch + Camera
                 HStack {
                     CornerButton(icon: engine.torchOn ? "flashlight.on.fill" : "flashlight.off.fill") {
                         engine.toggleTorch()
@@ -207,8 +225,8 @@ struct LockScreenView: View {
                         showCamera = true
                     }
                 }
-                .padding(.horizontal, 30)
-                .padding(.bottom, geo.safeAreaInsets.bottom > 0 ? geo.safeAreaInsets.bottom : 20)
+                .padding(.horizontal, 46)
+                .padding(.bottom, max(geo.safeAreaInsets.bottom, 20) + 10)
             }
         }
         .contentShape(Rectangle())
@@ -216,12 +234,10 @@ struct LockScreenView: View {
             DragGesture(minimumDistance: 12)
                 .onChanged { value in
                     if value.translation.height < 0 {
-                        isDragging = true
                         dragOffset = value.translation.height
                     }
                 }
                 .onEnded { value in
-                    isDragging = false
                     let velocity = value.predictedEndTranslation.height
                     if value.translation.height < -70 || velocity < -200 {
                         dragOffset = 0
@@ -268,13 +284,11 @@ struct LockScreenView: View {
     func setupVolumeObserver() {
         resetVolumeToMid()
         volumeObserver.onVolumeDown = {
-            // Go to passcode if not already there
             if engine.lockState == .locked {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
                     engine.lockState = .passcode
                 }
             }
-            // Start auto-type after configured delay
             DispatchQueue.main.asyncAfter(deadline: .now() + engine.autoTypeDelay) {
                 NotificationCenter.default.post(name: .startAutoType, object: nil)
             }

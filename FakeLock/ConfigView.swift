@@ -4,13 +4,14 @@ import PhotosUI
 struct ConfigView: View {
     @EnvironmentObject var engine: LockEngine
     @Environment(\.dismiss) var dismiss
-    @State private var selectedPhoto: PhotosPickerItem? = nil
+    @State private var selectedWallpaper: PhotosPickerItem?   = nil
+    @State private var selectedHomeScreen: PhotosPickerItem?  = nil
 
     var body: some View {
         NavigationStack {
             Form {
 
-                // ── TIME ─────────────────────────────────────────────
+                // ── TIME ──────────────────────────────────────────
                 Section {
                     Toggle("Force time", isOn: $engine.forceTime)
                         .onChange(of: engine.forceTime) { _ in engine.save() }
@@ -24,11 +25,11 @@ struct ConfigView: View {
                     }
                 } header: { Text("Time Force") } footer: {
                     Text(engine.forceTime
-                         ? "Shows \(engine.forcedTimeString) instead of real time."
-                         : "Shows real time.")
+                         ? "Displays \(engine.forcedTimeString) instead of real time."
+                         : "Displays real time.")
                 }
 
-                // ── BATTERY ───────────────────────────────────────────
+                // ── BATTERY ───────────────────────────────────────
                 Section {
                     Toggle("Force battery", isOn: $engine.forceBattery)
                         .onChange(of: engine.forceBattery) { _ in engine.save() }
@@ -41,7 +42,7 @@ struct ConfigView: View {
                     }
                 } header: { Text("Battery Force") }
 
-                // ── PASSCODE ──────────────────────────────────────────
+                // ── PASSCODE ──────────────────────────────────────
                 Section {
                     HStack {
                         Text("Code")
@@ -58,10 +59,10 @@ struct ConfigView: View {
                                 ), in: 0...9)
                     }
                 } header: { Text("Passcode") } footer: {
-                    Text("The 4-digit code that auto-types after the volume trigger.")
+                    Text("4-digit code auto-typed after the volume trigger.")
                 }
 
-                // ── AUTO TYPE ─────────────────────────────────────────
+                // ── AUTO TYPE TIMING ──────────────────────────────
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -89,27 +90,74 @@ struct ConfigView: View {
                     }
                     .padding(.vertical, 4)
                 } header: { Text("Auto-Type Timing") } footer: {
-                    Text("Volume down → waits delay → types each digit → unlocks to home screen.")
+                    Text("Volume down → waits delay → types each digit → unlocks.")
                 }
 
-                // ── WALLPAPER ─────────────────────────────────────────
+                // ── WALLPAPER ─────────────────────────────────────
                 Section {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("Choose Wallpaper", systemImage: "photo.on.rectangle")
+                    PhotosPicker(selection: $selectedWallpaper, matching: .images) {
+                        Label("Choose Lock Screen Wallpaper", systemImage: "photo.on.rectangle")
                     }
-                    .onChange(of: selectedPhoto) { item in
+                    .onChange(of: selectedWallpaper) { item in
                         Task {
-                            if let data = try? await item?.loadTransferable(type: Data.self),
+                            guard let item else { return }
+                            if let data = try? await item.loadTransferable(type: Data.self),
                                let image = UIImage(data: data) {
-                                engine.saveWallpaper(image)
+                                await MainActor.run { engine.saveWallpaper(image) }
                             }
                         }
                     }
-                } header: { Text("Wallpaper") } footer: {
-                    Text("Take a screenshot of your real lock screen and use it here for maximum realism.")
+                    if engine.wallpaperImage != nil {
+                        HStack {
+                            Text("Wallpaper set ✓")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Remove") {
+                                engine.wallpaperImage = nil
+                                try? FileManager.default.removeItem(at:
+                                    FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                        .appendingPathComponent("wallpaper.jpg"))
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                } header: { Text("Lock Screen Wallpaper") } footer: {
+                    Text("Take a screenshot of your real lock screen for maximum realism.")
                 }
 
-                // ── NOTIFICATIONS ─────────────────────────────────────
+                // ── HOME SCREEN ───────────────────────────────────
+                Section {
+                    PhotosPicker(selection: $selectedHomeScreen, matching: .images) {
+                        Label("Choose Home Screen Snapshot", systemImage: "iphone")
+                    }
+                    .onChange(of: selectedHomeScreen) { item in
+                        Task {
+                            guard let item else { return }
+                            if let data = try? await item.loadTransferable(type: Data.self),
+                               let image = UIImage(data: data) {
+                                await MainActor.run { engine.saveHomeScreen(image) }
+                            }
+                        }
+                    }
+                    if engine.homeScreenImage != nil {
+                        HStack {
+                            Text("Home screen set ✓")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Remove") {
+                                engine.homeScreenImage = nil
+                                try? FileManager.default.removeItem(at:
+                                    FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                        .appendingPathComponent("homescreen.jpg"))
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                } header: { Text("Home Screen") } footer: {
+                    Text("Shown during unlock animation. Take a screenshot of your real home screen.")
+                }
+
+                // ── NOTIFICATIONS ─────────────────────────────────
                 Section {
                     ForEach($engine.fakeNotifications) { $notif in
                         NotificationRowView(notif: $notif)
@@ -122,7 +170,7 @@ struct ConfigView: View {
                         Label("Add Notification", systemImage: "plus.circle.fill")
                     }
                 } header: { Text("Fake Notifications") } footer: {
-                    Text("Max 3 shown. Triple-tap the time on the lock screen to reopen this.")
+                    Text("Max 3 shown. Triple-tap the clock on the lock screen to reopen this.")
                 }
             }
             .navigationTitle("Setup")
