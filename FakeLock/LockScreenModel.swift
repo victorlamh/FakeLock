@@ -135,17 +135,20 @@ class LockEngine: ObservableObject {
     // MARK: - Unlock
     func performUnlock() {
         lockState = .unlocking
-        withAnimation(.easeInOut(duration: 0.38)) {
-            showHomeScreen = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        // Show home screen snapshot instantly — NO animation, so the suspend is invisible
+        showHomeScreen = true
+        // Suspend immediately after one frame so the snapshot is already covering everything
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            UIView.setAnimationsEnabled(false)
             UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                UIView.setAnimationsEnabled(true)
                 self.showHomeScreen = false
                 self.lockState = .locked
             }
         }
     }
+
 
     // MARK: - Wallpaper
     func saveWallpaper(_ image: UIImage) {

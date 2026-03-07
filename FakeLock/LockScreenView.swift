@@ -23,7 +23,7 @@ func resetVolumeToMid() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { s.value = 0.5 }
 }
 
-// MARK: - Camera picker
+// MARK: - Camera View
 struct CameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
 
@@ -85,15 +85,14 @@ struct LockScreenView: View {
                         ))
                 }
 
-                // ── HOME SCREEN SNAPSHOT ──────────────────────────
+                // ── HOME SCREEN SNAPSHOT — instant, no animation ──
                 if engine.showHomeScreen {
                     homeScreenOverlay
-                        .transition(.opacity)
+                        .ignoresSafeArea()
                         .zIndex(99)
                 }
             }
             .animation(.spring(response: 0.42, dampingFraction: 0.88), value: engine.lockState)
-            .animation(.easeInOut(duration: 0.38), value: engine.showHomeScreen)
         }
         .ignoresSafeArea()
         .statusBarHidden(true)
@@ -131,9 +130,8 @@ struct LockScreenView: View {
             Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
-                .ignoresSafeArea()
         } else {
-            Color.black.ignoresSafeArea()
+            Color.black
         }
     }
 
@@ -158,7 +156,8 @@ struct LockScreenView: View {
                     HStack(spacing: 4) {
                         Text("\(engine.displayBattery)%")
                             .font(.system(size: 12, weight: .semibold))
-                        Image(systemName: engine.isCharging ? "battery.100percent.bolt" : batteryIcon)
+                        Image(systemName: engine.isCharging
+                              ? "battery.100percent.bolt" : batteryIcon)
                             .font(.system(size: 13, weight: .semibold))
                     }
                 }
@@ -166,16 +165,15 @@ struct LockScreenView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, max(geo.safeAreaInsets.top, 14))
 
-                Spacer().frame(height: 38)
+                // Push time block to roughly 35% from top
+                Spacer().frame(height: geo.size.height * 0.10)
 
-                // Lock icon
                 Image(systemName: "lock.fill")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.white.opacity(0.85))
 
                 Spacer().frame(height: 14)
 
-                // Time
                 Text(engine.forceTime ? engine.forcedTimeString : currentTime)
                     .font(.system(size: 82, weight: .thin))
                     .foregroundColor(.white)
@@ -183,7 +181,6 @@ struct LockScreenView: View {
                     .lineLimit(1)
                     .onTapGesture { handleTripleTap() }
 
-                // Date
                 Text(currentDate)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white.opacity(0.85))
@@ -217,13 +214,11 @@ struct LockScreenView: View {
 
                 // Torch + Camera
                 HStack {
-                    CornerButton(icon: engine.torchOn ? "flashlight.on.fill" : "flashlight.off.fill") {
-                        engine.toggleTorch()
-                    }
+                    CornerButton(
+                        icon: engine.torchOn ? "flashlight.on.fill" : "flashlight.off.fill"
+                    ) { engine.toggleTorch() }
                     Spacer()
-                    CornerButton(icon: "camera.fill") {
-                        showCamera = true
-                    }
+                    CornerButton(icon: "camera.fill") { showCamera = true }
                 }
                 .padding(.horizontal, 46)
                 .padding(.bottom, max(geo.safeAreaInsets.bottom, 20) + 10)

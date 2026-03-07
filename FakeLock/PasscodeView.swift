@@ -20,15 +20,16 @@ struct PasscodeView: View {
 
                 // ── MAIN CONTENT ──────────────────────────────────
                 VStack(spacing: 0) {
-                    Spacer().frame(height: geo.safeAreaInsets.top + 44)
+
+                    Spacer().frame(height: geo.size.height * 0.13)
 
                     headerSection
 
-                    Spacer().frame(height: 44)
+                    Spacer().frame(height: geo.size.height * 0.07)
 
                     dotsRow
 
-                    Spacer().frame(height: 54)
+                    Spacer().frame(height: geo.size.height * 0.07)
 
                     numericGrid
 
@@ -41,7 +42,7 @@ struct PasscodeView: View {
                     Spacer()
                 }
 
-                // ── EMERGENCY + DELETE pinned to bottom ───────────
+                // ── EMERGENCY + DELETE pinned to very bottom ───────
                 VStack {
                     Spacer()
                     HStack {
@@ -240,7 +241,9 @@ struct KeyButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isHighlighted ? Color.white.opacity(0.9) : Color.white.opacity(0.18))
+                    .fill(isHighlighted
+                          ? Color.white.opacity(0.9)
+                          : Color.white.opacity(0.18))
                     .frame(width: 82, height: 82)
                     .scaleEffect(isHighlighted ? 0.93 : 1.0)
                     .animation(.easeInOut(duration: 0.1), value: isHighlighted)
@@ -251,7 +254,9 @@ struct KeyButton: View {
                     if let letter = letters[digit] {
                         Text(letter)
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(isHighlighted ? .black.opacity(0.6) : .white.opacity(0.6))
+                            .foregroundColor(isHighlighted
+                                             ? .black.opacity(0.6)
+                                             : .white.opacity(0.6))
                             .kerning(1.8)
                     }
                 }
