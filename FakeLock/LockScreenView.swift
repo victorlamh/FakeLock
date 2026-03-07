@@ -1,8 +1,53 @@
 import SwiftUI
 import MediaPlayer
-import PhotosUI
 
-// MARK: - Lock Screen
+// MARK: - Hex Color
+extension Color {
+    init(hex: String) {
+        let h = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: h).scanHexInt64(&int)
+        self.init(
+            red:   Double((int >> 16) & 0xFF) / 255,
+            green: Double((int >> 8)  & 0xFF) / 255,
+            blue:  Double(int         & 0xFF) / 255
+        )
+    }
+}
+
+// MARK: - Volume helper
+func resetVolumeToMid() {
+    let v = MPVolumeView()
+    guard let s = v.subviews.first(where: { $0 is UISlider }) as? UISlider else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { s.value = 0.5 }
+}
+
+// MARK: - Camera View
+struct CameraView: UIViewControllerRepresentable {
+    @Environment(\.dismiss) var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraView
+        init(_ parent: CameraView) { self.parent = parent }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.dismiss()
+        }
+    }
+}
+
+// MARK: - Lock Screen View
 struct LockScreenView: View {
     @EnvironmentObject var engine: LockEngine
     @StateObject private var volumeObserver = VolumeObserver()
@@ -10,124 +55,40 @@ struct LockScreenView: View {
     @State private var currentTime: String = ""
     @State private var currentDate: String = ""
     @State private var clockTimer: Timer? = nil
-    @State private var autoTimer: Timer? = nil
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
     @State private var tapCount = 0
     @State private var tapTimer: Timer? = nil
     @State private var showConfig = false
+    @State private var showCamera = false
     @State private var wallpaper: UIImage? = nil
-
-    // Unlock animation
-    @State private var contentOffset: CGFloat = 0
-    @State private var contentOpacity: Double = 1.0
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-
                 // ── WALLPAPER ────────────────────────────────────────
-                if let img = wallpaper {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFill()
-                        .ignoresSafeArea()
-                } else {
-                    LinearGradient(
-                        colors: [Color(hex: "0a0e27"), Color(hex: "1a1060"), Color(hex: "0d0d1a")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
-                }
-
-                // Dark scrim
-                Color.black.opacity(wallpaper != nil ? 0.25 : 0.0)
+                wallpaperView
                     .ignoresSafeArea()
 
-                // ── LOCK SCREEN CONTENT ──────────────────────────────
-                VStack(spacing: 0) {
-
-                    // Status bar
-                    HStack {
-                        // Signal + WiFi
-                        HStack(spacing: 5) {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 12, weight: .semibold))
-                            Image(systemName: "wifi")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        Spacer()
-                        // Battery
-                        HStack(spacing: 4) {
-                            Text("\(engine.displayBattery)%")
-                                .font(.system(size: 12, weight: .semibold))
-                            Image(systemName: engine.isCharging ? "battery.100percent.bolt" : batteryIcon)
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.top, geo.safeAreaInsets.top > 0 ? geo.safeAreaInsets.top : 14)
-
-                    Spacer().frame(height: 40)
-
-                    // Large time
-                    Text(engine.forceTime ? engine.forcedTimeString : currentTime)
-                        .font(.system(size: 88, weight: .thin, design: .default))
-                        .foregroundColor(.white)
-                        .onTapGesture {
-                            handleTripleTap()
-                        }
-
-                    // Date
-                    Text(currentDate)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.85))
-                        .padding(.top, 6)
-
-                    Spacer().frame(height: 44)
-
-                    // Notifications
-                    if !engine.fakeNotifications.isEmpty {
-                        VStack(spacing: 10) {
-                            ForEach(engine.fakeNotifications.prefix(3)) { notif in
-                                NotificationCard(notif: notif)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-
-                    Spacer()
-
-                    // Face ID + swipe hint
-                    VStack(spacing: 6) {
-                        Image(systemName: "faceid")
-                            .font(.system(size: 26))
-                            .foregroundColor(.white.opacity(0.7))
-                        Text("Swipe up to unlock")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    .padding(.bottom, 16)
-
-                    // Bottom corners
-                    HStack {
-                        CornerButton(icon: "flashlight.off.fill")
-                        Spacer()
-                        CornerButton(icon: "camera.fill")
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, geo.safeAreaInsets.bottom > 0 ? geo.safeAreaInsets.bottom : 20)
+                // ── LOCK CONTENT ─────────────────────────────────────
+                if engine.lockState == .locked {
+                    lockContent(geo: geo)
+                        .offset(y: dragOffset < 0 ? dragOffset * 0.6 : 0)
+                        .opacity(1.0 - Double(max(0, -dragOffset)) / 300)
+                        .transition(.identity)
                 }
-                .offset(y: contentOffset)
-                .opacity(contentOpacity)
 
-                // ── UNLOCK OVERLAY ───────────────────────────────────
-                if engine.isUnlocked {
-                    Color.black
-                        .ignoresSafeArea()
-                        .transition(.opacity)
+                // ── PASSCODE OVERLAY ─────────────────────────────────
+                if engine.lockState == .passcode || engine.lockState == .unlocking {
+                    PasscodeView(wallpaper: wallpaper)
+                        .environmentObject(engine)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom),
+                            removal: .move(edge: .bottom)
+                        ))
                 }
             }
+            .animation(.spring(response: 0.42, dampingFraction: 0.88), value: engine.lockState)
         }
         .ignoresSafeArea()
         .statusBarHidden(true)
@@ -135,25 +96,145 @@ struct LockScreenView: View {
             wallpaper = engine.loadWallpaper()
             startClock()
             setupVolumeObserver()
-            if engine.unlockTrigger == .auto {
-                startAutoUnlock()
-            }
         }
-        .onDisappear { teardown() }
-        .onChange(of: engine.isUnlocked) { unlocked in
-            if unlocked {
-                withAnimation(.easeInOut(duration: 0.55)) {
-                    contentOffset = -40
-                    contentOpacity = 0
-                }
-            } else {
-                contentOffset = 0
-                contentOpacity = 1.0
-            }
-        }
+        .onDisappear { clockTimer?.invalidate() }
         .sheet(isPresented: $showConfig) {
             ConfigView().environmentObject(engine)
         }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraView()
+        }
+    }
+
+    // MARK: - Wallpaper
+    @ViewBuilder var wallpaperView: some View {
+        if let img = wallpaper {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+        } else {
+            LinearGradient(
+                colors: [Color(hex: "0a0e27"), Color(hex: "1a1060"), Color(hex: "0d0d1a")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    // MARK: - Lock Content
+    func lockContent(geo: GeometryProxy) -> some View {
+        ZStack {
+            if wallpaper != nil {
+                Color.black.opacity(0.2).ignoresSafeArea()
+            }
+
+            VStack(spacing: 0) {
+
+                // Status bar
+                HStack {
+                    HStack(spacing: 5) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "wifi")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("\(engine.displayBattery)%")
+                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: engine.isCharging ? "battery.100percent.bolt" : batteryIcon)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.top, geo.safeAreaInsets.top > 0 ? geo.safeAreaInsets.top : 14)
+
+                Spacer().frame(height: 24)
+
+                // Lock icon
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+
+                Spacer().frame(height: 14)
+
+                // Time
+                Text(engine.forceTime ? engine.forcedTimeString : currentTime)
+                    .font(.system(size: 82, weight: .thin))
+                    .foregroundColor(.white)
+                    .onTapGesture { handleTripleTap() }
+
+                // Date
+                Text(currentDate)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.top, 4)
+
+                Spacer().frame(height: 36)
+
+                // Notifications
+                if !engine.fakeNotifications.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(engine.fakeNotifications.prefix(3)) { notif in
+                            NotificationCard(notif: notif)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                Spacer()
+
+                // Face ID + swipe hint
+                VStack(spacing: 8) {
+                    Image(systemName: "faceid")
+                        .font(.system(size: 28))
+                        .foregroundColor(.white.opacity(0.7))
+                    Text("Swipe up to unlock")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer().frame(height: 22)
+
+                // Bottom corners: real torch + real camera
+                HStack {
+                    CornerButton(icon: engine.torchOn ? "flashlight.on.fill" : "flashlight.off.fill") {
+                        engine.toggleTorch()
+                    }
+                    Spacer()
+                    CornerButton(icon: "camera.fill") {
+                        showCamera = true
+                    }
+                }
+                .padding(.horizontal, 30)
+                .padding(.bottom, geo.safeAreaInsets.bottom > 0 ? geo.safeAreaInsets.bottom : 20)
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { value in
+                    if value.translation.height < 0 {
+                        isDragging = true
+                        dragOffset = value.translation.height
+                    }
+                }
+                .onEnded { value in
+                    isDragging = false
+                    let velocity = value.predictedEndTranslation.height
+                    if value.translation.height < -70 || velocity < -200 {
+                        dragOffset = 0
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                            engine.lockState = .passcode
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 
     // MARK: - Helpers
@@ -173,10 +254,6 @@ struct LockScreenView: View {
             if tapCount >= 3 { showConfig = true }
             tapCount = 0
         }
-        // Triple tap also triggers unlock if set
-        if engine.unlockTrigger == .tripleTap && tapCount >= 3 {
-            engine.unlock()
-        }
     }
 
     func startClock() {
@@ -189,23 +266,20 @@ struct LockScreenView: View {
     }
 
     func setupVolumeObserver() {
+        resetVolumeToMid()
         volumeObserver.onVolumeDown = {
-            guard engine.unlockTrigger == .volumeDown else { return }
-            engine.unlock()
+            // Go to passcode if not already there
+            if engine.lockState == .locked {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+                    engine.lockState = .passcode
+                }
+            }
+            // Start auto-type after configured delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + engine.autoTypeDelay) {
+                NotificationCenter.default.post(name: .startAutoType, object: nil)
+            }
             resetVolumeToMid()
         }
-    }
-
-    func startAutoUnlock() {
-        autoTimer = Timer.scheduledTimer(withTimeInterval: engine.autoUnlockDelay,
-                                         repeats: false) { _ in
-            engine.unlock()
-        }
-    }
-
-    func teardown() {
-        clockTimer?.invalidate()
-        autoTimer?.invalidate()
     }
 }
 
@@ -223,7 +297,6 @@ struct NotificationCard: View {
                     .font(.system(size: 18))
                     .foregroundColor(.white)
             }
-
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(notif.appName.isEmpty ? "Messages" : notif.appName)
@@ -256,36 +329,18 @@ struct NotificationCard: View {
 // MARK: - Corner Button
 struct CornerButton: View {
     let icon: String
+    let action: () -> Void
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: 52, height: 52)
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundColor(.white)
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 52, height: 52)
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+            }
         }
     }
-}
-
-// MARK: - Hex Color
-extension Color {
-    init(hex: String) {
-        let h = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: h).scanHexInt64(&int)
-        self.init(
-            red:   Double((int >> 16) & 0xFF) / 255,
-            green: Double((int >> 8)  & 0xFF) / 255,
-            blue:  Double(int         & 0xFF) / 255
-        )
-    }
-}
-
-// MARK: - Volume Reset
-private func resetVolumeToMid() {
-    let v = MPVolumeView()
-    guard let s = v.subviews.first(where: { $0 is UISlider }) as? UISlider else { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { s.value = 0.5 }
 }

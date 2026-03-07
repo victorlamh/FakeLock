@@ -4,7 +4,6 @@ import PhotosUI
 struct ConfigView: View {
     @EnvironmentObject var engine: LockEngine
     @Environment(\.dismiss) var dismiss
-
     @State private var selectedPhoto: PhotosPickerItem? = nil
 
     var body: some View {
@@ -15,73 +14,82 @@ struct ConfigView: View {
                 Section {
                     Toggle("Force time", isOn: $engine.forceTime)
                         .onChange(of: engine.forceTime) { _ in engine.save() }
-
                     if engine.forceTime {
                         Stepper("Hour: \(engine.forcedHour)",
                                 value: $engine.forcedHour, in: 0...23)
                             .onChange(of: engine.forcedHour) { _ in engine.save() }
-
                         Stepper(String(format: "Minute: %02d", engine.forcedMinute),
                                 value: $engine.forcedMinute, in: 0...59)
                             .onChange(of: engine.forcedMinute) { _ in engine.save() }
                     }
-                } header: {
-                    Text("Time Force")
-                } footer: {
+                } header: { Text("Time Force") } footer: {
                     Text(engine.forceTime
-                         ? "Lock screen will display \(engine.forcedTimeString) instead of real time."
-                         : "Lock screen shows real time.")
+                         ? "Shows \(engine.forcedTimeString) instead of real time."
+                         : "Shows real time.")
                 }
 
                 // ── BATTERY ───────────────────────────────────────────
                 Section {
                     Toggle("Force battery", isOn: $engine.forceBattery)
                         .onChange(of: engine.forceBattery) { _ in engine.save() }
-
                     if engine.forceBattery {
                         Stepper("Level: \(engine.forcedBattery)%",
                                 value: $engine.forcedBattery, in: 1...100)
                             .onChange(of: engine.forcedBattery) { _ in engine.save() }
-
                         Toggle("Show as charging", isOn: $engine.forcedCharging)
                             .onChange(of: engine.forcedCharging) { _ in engine.save() }
                     }
-                } header: {
-                    Text("Battery Force")
-                } footer: {
-                    Text(engine.forceBattery
-                         ? "Lock screen will display \(engine.forcedBattery)%."
-                         : "Lock screen shows real battery level.")
+                } header: { Text("Battery Force") }
+
+                // ── PASSCODE ──────────────────────────────────────────
+                Section {
+                    HStack {
+                        Text("Code")
+                        Spacer()
+                        Text(engine.passcodeDigits.map(String.init).joined())
+                            .font(.system(size: 17, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    ForEach(0..<4, id: \.self) { i in
+                        Stepper("Digit \(i + 1): \(engine.passcodeDigits[i])",
+                                value: Binding(
+                                    get: { engine.passcodeDigits[i] },
+                                    set: { engine.passcodeDigits[i] = $0; engine.save() }
+                                ), in: 0...9)
+                    }
+                } header: { Text("Passcode") } footer: {
+                    Text("The 4-digit code that auto-types after the volume trigger.")
                 }
 
-                // ── UNLOCK TRIGGER ────────────────────────────────────
+                // ── AUTO TYPE ─────────────────────────────────────────
                 Section {
-                    Picker("Trigger", selection: $engine.unlockTrigger) {
-                        ForEach(UnlockTrigger.allCases, id: \.self) { t in
-                            Text(t.label).tag(t)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Delay before typing")
+                            Spacer()
+                            Text("\(String(format: "%.1f", engine.autoTypeDelay))s")
+                                .foregroundColor(.secondary).monospacedDigit()
                         }
+                        Slider(value: $engine.autoTypeDelay, in: 0...5, step: 0.5)
+                            .tint(.blue)
+                            .onChange(of: engine.autoTypeDelay) { _ in engine.save() }
                     }
-                    .onChange(of: engine.unlockTrigger) { _ in engine.save() }
+                    .padding(.vertical, 4)
 
-                    if engine.unlockTrigger == .auto {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Delay")
-                                Spacer()
-                                Text("\(Int(engine.autoUnlockDelay))s")
-                                    .foregroundColor(.secondary)
-                                    .monospacedDigit()
-                            }
-                            Slider(value: $engine.autoUnlockDelay, in: 1...30, step: 1)
-                                .tint(.blue)
-                                .onChange(of: engine.autoUnlockDelay) { _ in engine.save() }
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Interval between digits")
+                            Spacer()
+                            Text("\(String(format: "%.1f", engine.digitInterval))s")
+                                .foregroundColor(.secondary).monospacedDigit()
                         }
-                        .padding(.vertical, 4)
+                        Slider(value: $engine.digitInterval, in: 0.2...1.5, step: 0.1)
+                            .tint(.blue)
+                            .onChange(of: engine.digitInterval) { _ in engine.save() }
                     }
-                } header: {
-                    Text("Unlock Trigger")
-                } footer: {
-                    Text("Triple tap the time to open this config at any time.")
+                    .padding(.vertical, 4)
+                } header: { Text("Auto-Type Timing") } footer: {
+                    Text("Volume down → waits delay → types each digit → unlocks to home screen.")
                 }
 
                 // ── WALLPAPER ─────────────────────────────────────────
@@ -97,10 +105,8 @@ struct ConfigView: View {
                             }
                         }
                     }
-                } header: {
-                    Text("Wallpaper")
-                } footer: {
-                    Text("Use a screenshot of your real lock screen for maximum realism.")
+                } header: { Text("Wallpaper") } footer: {
+                    Text("Take a screenshot of your real lock screen and use it here for maximum realism.")
                 }
 
                 // ── NOTIFICATIONS ─────────────────────────────────────
@@ -110,17 +116,13 @@ struct ConfigView: View {
                     }
                     .onDelete { engine.fakeNotifications.remove(atOffsets: $0); engine.save() }
                     .onMove   { engine.fakeNotifications.move(fromOffsets: $0, toOffset: $1); engine.save() }
-
                     Button(action: {
-                        engine.fakeNotifications.append(FakeNotification())
-                        engine.save()
+                        engine.fakeNotifications.append(FakeNotification()); engine.save()
                     }) {
                         Label("Add Notification", systemImage: "plus.circle.fill")
                     }
-                } header: {
-                    Text("Fake Notifications")
-                } footer: {
-                    Text("Shown on lock screen in order. Max 3 displayed.")
+                } header: { Text("Fake Notifications") } footer: {
+                    Text("Max 3 shown. Triple-tap the time on the lock screen to reopen this.")
                 }
             }
             .navigationTitle("Setup")
@@ -129,9 +131,7 @@ struct ConfigView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
+                ToolbarItem(placement: .navigationBarLeading) { EditButton() }
             }
         }
     }
@@ -142,13 +142,12 @@ struct NotificationRowView: View {
     @Binding var notif: FakeNotification
     @EnvironmentObject var engine: LockEngine
 
-    let symbols = ["message.fill", "envelope.fill", "phone.fill",
-                   "bell.fill", "heart.fill", "star.fill",
-                   "camera.fill", "map.fill", "calendar"]
+    let symbols = ["message.fill", "envelope.fill", "phone.fill", "bell.fill",
+                   "heart.fill", "star.fill", "camera.fill", "map.fill", "calendar"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("App name (e.g. Messages)", text: $notif.appName)
+            TextField("App name", text: $notif.appName)
                 .font(.system(size: 15))
                 .onChange(of: notif.appName) { _ in engine.save() }
             Divider()
@@ -159,11 +158,11 @@ struct NotificationRowView: View {
             }
             .onChange(of: notif.sfSymbol) { _ in engine.save() }
             Divider()
-            TextField("Title (e.g. Sarah)", text: $notif.title)
+            TextField("Title", text: $notif.title)
                 .font(.system(size: 15))
                 .onChange(of: notif.title) { _ in engine.save() }
             Divider()
-            TextField("Body (e.g. Are you coming tonight?)", text: $notif.body)
+            TextField("Body", text: $notif.body)
                 .font(.system(size: 15))
                 .onChange(of: notif.body) { _ in engine.save() }
             Divider()
