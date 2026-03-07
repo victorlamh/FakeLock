@@ -11,6 +11,20 @@ struct ConfigView: View {
         NavigationStack {
             Form {
 
+                // ── STATUS BAR ────────────────────────────────────
+                Section {
+                    HStack {
+                        Text("Carrier name")
+                        Spacer()
+                        TextField("Free", text: $engine.carrierName)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(.secondary)
+                            .onChange(of: engine.carrierName) { _ in engine.save() }
+                    }
+                } header: { Text("Status Bar") } footer: {
+                    Text("Carrier shown top-left of lock screen (e.g. Free, Orange, SFR).")
+                }
+
                 // ── TIME ──────────────────────────────────────────
                 Section {
                     Toggle("Force time", isOn: $engine.forceTime)
@@ -59,7 +73,7 @@ struct ConfigView: View {
                                 ), in: 0...9)
                     }
                 } header: { Text("Passcode") } footer: {
-                    Text("4-digit code auto-typed after the volume trigger.")
+                    Text("4-digit code auto-typed when the secret button is tapped.")
                 }
 
                 // ── AUTO TYPE TIMING ──────────────────────────────
@@ -90,7 +104,7 @@ struct ConfigView: View {
                     }
                     .padding(.vertical, 4)
                 } header: { Text("Auto-Type Timing") } footer: {
-                    Text("Volume down → waits delay → types each digit → shows home screen.")
+                    Text("Secret button tapped → waits delay → types each digit → shows home screen.")
                 }
 
                 // ── WALLPAPER ─────────────────────────────────────

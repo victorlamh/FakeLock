@@ -61,6 +61,9 @@ class LockEngine: ObservableObject {
     @Published var wallpaperImage: UIImage? = nil
     @Published var homeScreenImage: UIImage? = nil
 
+    // Status bar
+    @Published var carrierName: String = "Free"
+
     // Time
     @Published var forceTime: Bool = false
     @Published var forcedHour: Int = 11
@@ -134,7 +137,6 @@ class LockEngine: ObservableObject {
 
     // MARK: - Unlock
     func performUnlock() {
-        // Instantly cover with home screen — no animation, no suspend
         showHomeScreen = true
         lockState = .unlocking
     }
@@ -181,6 +183,7 @@ class LockEngine: ObservableObject {
     // MARK: - Persist
     func save() {
         let d = UserDefaults.standard
+        d.set(carrierName,    forKey: "carrierName")
         d.set(forceTime,      forKey: "forceTime")
         d.set(forcedHour,     forKey: "forcedHour")
         d.set(forcedMinute,   forKey: "forcedMinute")
@@ -197,6 +200,7 @@ class LockEngine: ObservableObject {
 
     func load() {
         let d = UserDefaults.standard
+        carrierName    = d.string(forKey: "carrierName")   ?? "Free"
         forceTime      = d.bool(forKey: "forceTime")
         forcedHour     = d.object(forKey: "forcedHour")    as? Int ?? 11
         forcedMinute   = d.object(forKey: "forcedMinute")  as? Int ?? 11

@@ -26,7 +26,6 @@ func resetVolumeToMid() {
 // MARK: - Camera View
 struct CameraView: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
-
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let p = UIImagePickerController()
         p.sourceType = .camera
@@ -35,7 +34,6 @@ struct CameraView: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-
     class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         let parent: CameraView
         init(_ parent: CameraView) { self.parent = parent }
@@ -64,18 +62,14 @@ struct LockScreenView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-
-                // ── WALLPAPER ─────────────────────────────────────
                 wallpaperView.ignoresSafeArea()
 
-                // ── LOCK CONTENT ──────────────────────────────────
                 if engine.lockState == .locked {
                     lockContent(geo: geo)
                         .offset(y: dragOffset < 0 ? dragOffset * 0.6 : 0)
                         .opacity(1.0 - Double(max(0, -dragOffset)) / 300)
                 }
 
-                // ── PASSCODE OVERLAY ──────────────────────────────
                 if engine.lockState == .passcode || engine.lockState == .unlocking {
                     PasscodeView()
                         .environmentObject(engine)
@@ -85,7 +79,6 @@ struct LockScreenView: View {
                         ))
                 }
 
-                // ── HOME SCREEN — instant, no transition ──────────
                 if engine.showHomeScreen {
                     homeScreenOverlay
                         .ignoresSafeArea()
@@ -139,28 +132,40 @@ struct LockScreenView: View {
 
             VStack(spacing: 0) {
 
-                // Status bar
-                HStack {
-                    HStack(spacing: 5) {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .font(.system(size: 12, weight: .semibold))
-                        Image(systemName: "wifi")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
+                // ── STATUS BAR ────────────────────────────────────
+                // Left: carrier name — Right: signal + 5G + battery icon
+                HStack(alignment: .center) {
+                    // Carrier
+                    Text(engine.carrierName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+
                     Spacer()
-                    HStack(spacing: 4) {
-                        Text("\(engine.displayBattery)%")
-                            .font(.system(size: 12, weight: .semibold))
+
+                    // Signal bars + 5G + battery
+                    HStack(spacing: 6) {
+                        // Signal bars
+                        Image(systemName: "cellularbars")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+
+                        // 5G label
+                        Text("5G")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+
+                        // Battery icon only — no percentage
                         Image(systemName: engine.isCharging
                               ? "battery.100percent.bolt" : batteryIcon)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
                     }
                 }
-                .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.top, max(geo.safeAreaInsets.top, 14))
 
-                Spacer().frame(height: 48)
+                // Push time block down a bit more
+                Spacer().frame(height: 58)
 
                 Image(systemName: "lock.fill")
                     .font(.system(size: 18, weight: .medium))
@@ -266,15 +271,13 @@ struct LockScreenView: View {
     }
 
     func setupVolumeObserver() {
+        // Volume only navigates to passcode — secret button handles auto-type
         resetVolumeToMid()
         volumeObserver.onVolumeDown = {
             if engine.lockState == .locked {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
                     engine.lockState = .passcode
                 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + engine.autoTypeDelay) {
-                NotificationCenter.default.post(name: .startAutoType, object: nil)
             }
             resetVolumeToMid()
         }
@@ -284,7 +287,6 @@ struct LockScreenView: View {
 // MARK: - Notification Card
 struct NotificationCard: View {
     let notif: FakeNotification
-
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
@@ -328,7 +330,6 @@ struct NotificationCard: View {
 struct CornerButton: View {
     let icon: String
     let action: () -> Void
-
     var body: some View {
         Button(action: action) {
             ZStack {
