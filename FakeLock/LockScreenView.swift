@@ -48,6 +48,7 @@ struct CameraView: UIViewControllerRepresentable {
 // MARK: - Lock Screen View
 struct LockScreenView: View {
     @EnvironmentObject var engine: LockEngine
+    @EnvironmentObject var cardEngine: CardInputEngine
     @StateObject private var volumeObserver = VolumeObserver()
 
     @State private var currentTime: String = ""
@@ -95,12 +96,17 @@ struct LockScreenView: View {
         }
         .onDisappear { clockTimer?.invalidate() }
         .sheet(isPresented: $showConfig) {
-            ConfigView().environmentObject(engine)
+            ConfigView()
+                .environmentObject(engine)
+                .environmentObject(cardEngine)
+                .environmentObject(iconStore)
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraView()
         }
     }
+
+    @EnvironmentObject var iconStore: AppIconStore
 
     // MARK: - Wallpaper
     @ViewBuilder var wallpaperView: some View {
@@ -132,29 +138,19 @@ struct LockScreenView: View {
 
             VStack(spacing: 0) {
 
-                // ── STATUS BAR ────────────────────────────────────
-                // Left: carrier name — Right: signal + 5G + battery icon
+                // Status bar
                 HStack(alignment: .center) {
-                    // Carrier
                     Text(engine.carrierName)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-
                     Spacer()
-
-                    // Signal bars + 5G + battery
                     HStack(spacing: 6) {
-                        // Signal bars
                         Image(systemName: "cellularbars")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
-
-                        // 5G label
                         Text("5G")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
-
-                        // Battery icon only — no percentage
                         Image(systemName: engine.isCharging
                               ? "battery.100percent.bolt" : batteryIcon)
                             .font(.system(size: 16, weight: .semibold))
@@ -164,7 +160,6 @@ struct LockScreenView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, max(geo.safeAreaInsets.top, 14))
 
-                // Push time block down a bit more
                 Spacer().frame(height: 58)
 
                 Image(systemName: "lock.fill")
@@ -271,13 +266,25 @@ struct LockScreenView: View {
     }
 
     func setupVolumeObserver() {
-        // Volume only navigates to passcode — secret button handles auto-type
         resetVolumeToMid()
+
+        // Volume DOWN — passcode trick navigation + card suit input
         volumeObserver.onVolumeDown = {
-            if engine.lockState == .locked {
+            if engine.passcodeEnabled && engine.lockState == .locked {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
                     engine.lockState = .passcode
                 }
+            }
+            if engine.acrosticEnabled {
+                cardEngine.volumeDown()
+            }
+            resetVolumeToMid()
+        }
+
+        // Volume UP — card value input
+        volumeObserver.onVolumeUp = {
+            if engine.acrosticEnabled {
+                cardEngine.volumeUp()
             }
             resetVolumeToMid()
         }

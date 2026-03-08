@@ -3,13 +3,122 @@ import PhotosUI
 
 struct ConfigView: View {
     @EnvironmentObject var engine: LockEngine
+    @EnvironmentObject var cardEngine: CardInputEngine
+    @EnvironmentObject var iconStore: AppIconStore
     @Environment(\.dismiss) var dismiss
+
     @State private var selectedWallpaper: PhotosPickerItem?  = nil
     @State private var selectedHomeScreen: PhotosPickerItem? = nil
+    @State private var selectedIcon: PhotosPickerItem?       = nil
+    @State private var pendingIconImage: UIImage?            = nil
+    @State private var pendingIconName: String               = ""
+    @State private var showIconNameAlert: Bool               = false
 
     var body: some View {
         NavigationStack {
             Form {
+
+                // ── ACTIVE TRICKS ─────────────────────────────────
+                Section {
+                    Toggle("Passcode trick", isOn: $engine.passcodeEnabled)
+                        .onChange(of: engine.passcodeEnabled) { _ in engine.save() }
+                    Toggle("Acrostic card trick", isOn: $engine.acrosticEnabled)
+                        .onChange(of: engine.acrosticEnabled) { _ in engine.save() }
+                } header: { Text("Active Tricks") } footer: {
+                    Text("Each trick is fully independent. Enable only what you need for the current session.")
+                }
+
+                // ── CARD INPUT STATUS ─────────────────────────────
+                if engine.acrosticEnabled {
+                    Section {
+                        if let card = cardEngine.confirmedCard {
+                            HStack {
+                                Text("Armed card")
+                                Spacer()
+                                Text(card.displayName)
+                                    .foregroundColor(.green)
+                                    .fontWeight(.semibold)
+                            }
+                            let missing = iconStore.missingLetters(for: card)
+                            if !missing.isEmpty {
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text("Missing icons for: \(missing.map(String.init).joined(separator: ", "))")
+                                        .foregroundColor(.orange)
+                                        .font(.system(size: 13))
+                                }
+                            } else {
+                                Label("All letters covered ✓", systemImage: "checkmark.seal.fill")
+                                    .foregroundColor(.green)
+                            }
+                            Button("Clear card") { cardEngine.clearConfirmed() }
+                                .foregroundColor(.red)
+                        } else {
+                            Text("No card armed yet.")
+                                .foregroundColor(.secondary)
+                            Text("On lock screen: Vol UP (value) then Vol DOWN (suit) — wait 2s to confirm.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                    } header: { Text("Card Input Status") }
+                }
+
+                // ── APP ICONS ─────────────────────────────────────
+                if engine.acrosticEnabled {
+                    Section {
+                        ForEach(iconStore.icons) { icon in
+                            HStack(spacing: 12) {
+                                if let img = icon.image {
+                                    Image(uiImage: img)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                } else {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(Color.gray.opacity(0.3))
+                                            .frame(width: 40, height: 40)
+                                        Text(String(icon.letter))
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(icon.name)
+                                        .font(.system(size: 15))
+                                    Text("Letter: \(String(icon.letter))")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .onDelete { iconStore.icons.remove(atOffsets: $0); iconStore.save() }
+
+                        PhotosPicker(selection: $selectedIcon, matching: .images) {
+                            Label("Add App Icon", systemImage: "plus.circle.fill")
+                        }
+                        .onChange(of: selectedIcon) { item in
+                            Task {
+                                guard let item else { return }
+                                if let data  = try? await item.loadTransferable(type: Data.self),
+                                   let image = UIImage(data: data) {
+                                    await MainActor.run {
+                                        pendingIconImage  = image
+                                        showIconNameAlert = true
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("App Icons (\(iconStore.icons.count))")
+                    } footer: {
+                        Text("First letter of the name is used for the acrostic. Add one icon per letter needed.")
+                    }
+                }
 
                 // ── STATUS BAR ────────────────────────────────────
                 Section {
@@ -22,7 +131,7 @@ struct ConfigView: View {
                             .onChange(of: engine.carrierName) { _ in engine.save() }
                     }
                 } header: { Text("Status Bar") } footer: {
-                    Text("Carrier shown top-left of lock screen (e.g. Free, Orange, SFR).")
+                    Text("Carrier shown top-left (e.g. Free, Orange, SFR).")
                 }
 
                 // ── TIME ──────────────────────────────────────────
@@ -57,54 +166,56 @@ struct ConfigView: View {
                 } header: { Text("Battery Force") }
 
                 // ── PASSCODE ──────────────────────────────────────
-                Section {
-                    HStack {
-                        Text("Code")
-                        Spacer()
-                        Text(engine.passcodeDigits.map(String.init).joined())
-                            .font(.system(size: 17, weight: .medium, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                    ForEach(0..<4, id: \.self) { i in
-                        Stepper("Digit \(i + 1): \(engine.passcodeDigits[i])",
-                                value: Binding(
-                                    get: { engine.passcodeDigits[i] },
-                                    set: { engine.passcodeDigits[i] = $0; engine.save() }
-                                ), in: 0...9)
-                    }
-                } header: { Text("Passcode") } footer: {
-                    Text("4-digit code auto-typed when the secret button is tapped.")
-                }
-
-                // ── AUTO TYPE TIMING ──────────────────────────────
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
+                if engine.passcodeEnabled {
+                    Section {
                         HStack {
-                            Text("Delay before typing")
+                            Text("Code")
                             Spacer()
-                            Text("\(String(format: "%.1f", engine.autoTypeDelay))s")
-                                .foregroundColor(.secondary).monospacedDigit()
+                            Text(engine.passcodeDigits.map(String.init).joined())
+                                .font(.system(size: 17, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
                         }
-                        Slider(value: $engine.autoTypeDelay, in: 0...5, step: 0.5)
-                            .tint(.blue)
-                            .onChange(of: engine.autoTypeDelay) { _ in engine.save() }
+                        ForEach(0..<4, id: \.self) { i in
+                            Stepper("Digit \(i + 1): \(engine.passcodeDigits[i])",
+                                    value: Binding(
+                                        get: { engine.passcodeDigits[i] },
+                                        set: { engine.passcodeDigits[i] = $0; engine.save() }
+                                    ), in: 0...9)
+                        }
+                    } header: { Text("Passcode") } footer: {
+                        Text("4-digit code auto-typed when the secret button is tapped on the passcode screen.")
                     }
-                    .padding(.vertical, 4)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Interval between digits")
-                            Spacer()
-                            Text("\(String(format: "%.1f", engine.digitInterval))s")
-                                .foregroundColor(.secondary).monospacedDigit()
+                    // ── AUTO TYPE TIMING ──────────────────────────
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Delay before typing")
+                                Spacer()
+                                Text("\(String(format: "%.1f", engine.autoTypeDelay))s")
+                                    .foregroundColor(.secondary).monospacedDigit()
+                            }
+                            Slider(value: $engine.autoTypeDelay, in: 0...5, step: 0.5)
+                                .tint(.blue)
+                                .onChange(of: engine.autoTypeDelay) { _ in engine.save() }
                         }
-                        Slider(value: $engine.digitInterval, in: 0.2...1.5, step: 0.1)
-                            .tint(.blue)
-                            .onChange(of: engine.digitInterval) { _ in engine.save() }
+                        .padding(.vertical, 4)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Interval between digits")
+                                Spacer()
+                                Text("\(String(format: "%.1f", engine.digitInterval))s")
+                                    .foregroundColor(.secondary).monospacedDigit()
+                            }
+                            Slider(value: $engine.digitInterval, in: 0.2...1.5, step: 0.1)
+                                .tint(.blue)
+                                .onChange(of: engine.digitInterval) { _ in engine.save() }
+                        }
+                        .padding(.vertical, 4)
+                    } header: { Text("Auto-Type Timing") } footer: {
+                        Text("Secret button tapped → waits delay → types each digit → shows home screen.")
                     }
-                    .padding(.vertical, 4)
-                } header: { Text("Auto-Type Timing") } footer: {
-                    Text("Secret button tapped → waits delay → types each digit → shows home screen.")
                 }
 
                 // ── WALLPAPER ─────────────────────────────────────
@@ -136,7 +247,7 @@ struct ConfigView: View {
                         }
                     }
                 } header: { Text("Lock Screen Wallpaper") } footer: {
-                    Text("Screenshot your real lock screen and use it here for maximum realism.")
+                    Text("Screenshot your real lock screen for maximum realism.")
                 }
 
                 // ── HOME SCREEN ───────────────────────────────────
@@ -168,7 +279,7 @@ struct ConfigView: View {
                         }
                     }
                 } header: { Text("Home Screen") } footer: {
-                    Text("Shown instantly on unlock. Screenshot your real home screen.")
+                    Text("Used as fallback when acrostic trick is off. Screenshot your real home screen.")
                 }
 
                 // ── NOTIFICATIONS ─────────────────────────────────
@@ -195,6 +306,24 @@ struct ConfigView: View {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
                 }
                 ToolbarItem(placement: .navigationBarLeading) { EditButton() }
+            }
+            .alert("App Name", isPresented: $showIconNameAlert) {
+                TextField("e.g. Facebook", text: $pendingIconName)
+                Button("Add") {
+                    if let img = pendingIconImage, !pendingIconName.isEmpty {
+                        iconStore.addIcon(name: pendingIconName, image: img)
+                        pendingIconName  = ""
+                        pendingIconImage = nil
+                        selectedIcon     = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingIconName  = ""
+                    pendingIconImage = nil
+                    selectedIcon     = nil
+                }
+            } message: {
+                Text("Enter the app name. The first letter will be used for the acrostic spelling.")
             }
         }
     }

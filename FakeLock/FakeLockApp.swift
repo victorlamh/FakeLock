@@ -8,14 +8,18 @@ class LockHostingController: UIHostingController<AnyView> {
 
 class SceneDelegate: NSObject, UIWindowSceneDelegate {
     var window: UIWindow?
-    var engine = LockEngine()
+    var engine      = LockEngine()
+    var cardEngine  = CardInputEngine()
+    var iconStore   = AppIconStore()
 
     func scene(_ scene: UIScene,
                willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let content = LockScreenView()
+        let content = RootView()
             .environmentObject(engine)
+            .environmentObject(cardEngine)
+            .environmentObject(iconStore)
             .preferredColorScheme(.dark)
         let host   = LockHostingController(rootView: AnyView(content))
         let window = UIWindow(windowScene: windowScene)
@@ -46,8 +50,24 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct FakeLockApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
     var body: some Scene {
         WindowGroup { EmptyView() }
+    }
+}
+
+// MARK: - Root router
+struct RootView: View {
+    @EnvironmentObject var engine: LockEngine
+    @EnvironmentObject var cardEngine: CardInputEngine
+
+    var body: some View {
+        ZStack {
+            LockScreenView()
+            if engine.showHomeScreen {
+                FakeHomeView()
+                    .ignoresSafeArea()
+                    .zIndex(99)
+            }
+        }
     }
 }
