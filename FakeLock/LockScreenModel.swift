@@ -25,6 +25,7 @@ class VolumeObserver: NSObject, ObservableObject {
     private let audioSession = AVAudioSession.sharedInstance()
     private var debounceTimer: Timer?
     var onVolumeDown: (() -> Void)?
+    var onVolumeUp: (() -> Void)?
 
     override init() {
         super.init()
@@ -39,10 +40,16 @@ class VolumeObserver: NSObject, ObservableObject {
         guard keyPath == "outputVolume" else { return }
         let newVol = (change?[.newKey] as? Float) ?? 0
         let oldVol = (change?[.oldKey] as? Float) ?? 0
-        guard newVol < oldVol else { return }
+        guard newVol != oldVol else { return }
         debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async { self?.onVolumeDown?() }
+        if newVol > oldVol {
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async { self?.onVolumeUp?() }
+            }
+        } else {
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async { self?.onVolumeDown?() }
+            }
         }
     }
 
@@ -57,22 +64,26 @@ class LockEngine: ObservableObject {
     @Published var lockState: LockState = .locked
     @Published var showHomeScreen: Bool = false
 
+    // Tricks
+    @Published var passcodeEnabled: Bool = true
+    @Published var acrosticEnabled: Bool = false
+
     // Images
-    @Published var wallpaperImage: UIImage? = nil
+    @Published var wallpaperImage: UIImage?  = nil
     @Published var homeScreenImage: UIImage? = nil
 
     // Status bar
     @Published var carrierName: String = "Free"
 
     // Time
-    @Published var forceTime: Bool = false
-    @Published var forcedHour: Int = 11
-    @Published var forcedMinute: Int = 11
+    @Published var forceTime: Bool    = false
+    @Published var forcedHour: Int    = 11
+    @Published var forcedMinute: Int  = 11
 
     // Battery
-    @Published var forceBattery: Bool = false
-    @Published var forcedBattery: Int = 37
-    @Published var forcedCharging: Bool = false
+    @Published var forceBattery: Bool    = false
+    @Published var forcedBattery: Int    = 37
+    @Published var forcedCharging: Bool  = false
 
     // Notifications
     @Published var fakeNotifications: [FakeNotification] = []
@@ -183,16 +194,18 @@ class LockEngine: ObservableObject {
     // MARK: - Persist
     func save() {
         let d = UserDefaults.standard
-        d.set(carrierName,    forKey: "carrierName")
-        d.set(forceTime,      forKey: "forceTime")
-        d.set(forcedHour,     forKey: "forcedHour")
-        d.set(forcedMinute,   forKey: "forcedMinute")
-        d.set(forceBattery,   forKey: "forceBattery")
-        d.set(forcedBattery,  forKey: "forcedBattery")
-        d.set(forcedCharging, forKey: "forcedCharging")
-        d.set(autoTypeDelay,  forKey: "autoTypeDelay")
-        d.set(digitInterval,  forKey: "digitInterval")
-        d.set(passcodeDigits, forKey: "passcodeDigits")
+        d.set(passcodeEnabled, forKey: "passcodeEnabled")
+        d.set(acrosticEnabled, forKey: "acrosticEnabled")
+        d.set(carrierName,     forKey: "carrierName")
+        d.set(forceTime,       forKey: "forceTime")
+        d.set(forcedHour,      forKey: "forcedHour")
+        d.set(forcedMinute,    forKey: "forcedMinute")
+        d.set(forceBattery,    forKey: "forceBattery")
+        d.set(forcedBattery,   forKey: "forcedBattery")
+        d.set(forcedCharging,  forKey: "forcedCharging")
+        d.set(autoTypeDelay,   forKey: "autoTypeDelay")
+        d.set(digitInterval,   forKey: "digitInterval")
+        d.set(passcodeDigits,  forKey: "passcodeDigits")
         if let data = try? JSONEncoder().encode(fakeNotifications) {
             d.set(data, forKey: "fakeNotifications")
         }
@@ -200,16 +213,18 @@ class LockEngine: ObservableObject {
 
     func load() {
         let d = UserDefaults.standard
-        carrierName    = d.string(forKey: "carrierName")   ?? "Free"
-        forceTime      = d.bool(forKey: "forceTime")
-        forcedHour     = d.object(forKey: "forcedHour")    as? Int ?? 11
-        forcedMinute   = d.object(forKey: "forcedMinute")  as? Int ?? 11
-        forceBattery   = d.bool(forKey: "forceBattery")
-        forcedBattery  = d.object(forKey: "forcedBattery") as? Int ?? 37
-        forcedCharging = d.bool(forKey: "forcedCharging")
-        autoTypeDelay  = d.object(forKey: "autoTypeDelay") as? Double ?? 1.5
-        digitInterval  = d.object(forKey: "digitInterval") as? Double ?? 0.5
-        passcodeDigits = d.array(forKey: "passcodeDigits") as? [Int] ?? [1, 2, 3, 4]
+        passcodeEnabled = d.object(forKey: "passcodeEnabled") as? Bool ?? true
+        acrosticEnabled = d.bool(forKey: "acrosticEnabled")
+        carrierName     = d.string(forKey: "carrierName")    ?? "Free"
+        forceTime       = d.bool(forKey: "forceTime")
+        forcedHour      = d.object(forKey: "forcedHour")     as? Int ?? 11
+        forcedMinute    = d.object(forKey: "forcedMinute")   as? Int ?? 11
+        forceBattery    = d.bool(forKey: "forceBattery")
+        forcedBattery   = d.object(forKey: "forcedBattery")  as? Int ?? 37
+        forcedCharging  = d.bool(forKey: "forcedCharging")
+        autoTypeDelay   = d.object(forKey: "autoTypeDelay")  as? Double ?? 1.5
+        digitInterval   = d.object(forKey: "digitInterval")  as? Double ?? 0.5
+        passcodeDigits  = d.array(forKey: "passcodeDigits")  as? [Int] ?? [1, 2, 3, 4]
         if let data    = d.data(forKey: "fakeNotifications"),
            let decoded = try? JSONDecoder().decode([FakeNotification].self, from: data) {
             fakeNotifications = decoded

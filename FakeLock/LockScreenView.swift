@@ -49,6 +49,7 @@ struct CameraView: UIViewControllerRepresentable {
 struct LockScreenView: View {
     @EnvironmentObject var engine: LockEngine
     @EnvironmentObject var cardEngine: CardInputEngine
+    @EnvironmentObject var iconStore: AppIconStore
     @StateObject private var volumeObserver = VolumeObserver()
 
     @State private var currentTime: String = ""
@@ -105,8 +106,6 @@ struct LockScreenView: View {
             CameraView()
         }
     }
-
-    @EnvironmentObject var iconStore: AppIconStore
 
     // MARK: - Wallpaper
     @ViewBuilder var wallpaperView: some View {
@@ -268,7 +267,6 @@ struct LockScreenView: View {
     func setupVolumeObserver() {
         resetVolumeToMid()
 
-        // Volume DOWN — passcode trick navigation + card suit input
         volumeObserver.onVolumeDown = {
             if engine.passcodeEnabled && engine.lockState == .locked {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
@@ -281,7 +279,6 @@ struct LockScreenView: View {
             resetVolumeToMid()
         }
 
-        // Volume UP — card value input
         volumeObserver.onVolumeUp = {
             if engine.acrosticEnabled {
                 cardEngine.volumeUp()
